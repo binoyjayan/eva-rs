@@ -1,0 +1,10 @@
+[package]
+name = "eva-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = "2.0"
+clap = { version = "4.5.40", features = ["derive"] }
+inkwell = { version = "0.6.0", features = ["llvm18-1"] }
+miette = { version = "7.6.0", features = ["fancy"] }
