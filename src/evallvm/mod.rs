@@ -3,7 +3,7 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
-use inkwell::values::FunctionValue;
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue};
 use std::path::Path;
 
 mod error;
@@ -31,13 +31,17 @@ impl<'ctx> EvaLLVM<'ctx> {
         }
     }
 
-    /// Creates a function prototype in the module
+    /// Creates a function prototype in the module, or return existing
     fn create_function_proto(
         &self,
         fn_name: &str,
         fn_type: FunctionType<'ctx>,
     ) -> Result<inkwell::values::FunctionValue<'ctx>> {
-        let fn_val = self.module.add_function(fn_name, fn_type, None);
+        let fn_val = if self.module.get_function(fn_name).is_none() {
+            self.module.add_function(fn_name, fn_type, None)
+        } else {
+            self.module.get_function(fn_name).unwrap()
+        };
         if !fn_val.verify(false) {
             return Err(EvaLLVMError::FunctionError {
                 func_name: fn_name.to_string(),
@@ -46,18 +50,23 @@ impl<'ctx> EvaLLVM<'ctx> {
         Ok(fn_val)
     }
 
-    /// Creates a function in the module, or returns the existing one if it already exists
+    /// Creates a function in the module
     fn create_function(
         &self,
         fn_name: &str,
         fn_type: FunctionType<'ctx>,
     ) -> Result<inkwell::values::FunctionValue<'ctx>> {
-        let fn_val = if self.module.get_function(fn_name).is_none() {
-            self.create_function_proto(fn_name, fn_type)?
-        } else {
-            self.module.get_function(fn_name).unwrap()
-        };
+        let fn_val = self.create_function_proto(fn_name, fn_type)?;
         self.create_function_block(fn_val)?;
+        Ok(fn_val)
+    }
+
+    /// Setup external functions
+    fn setup_extern_functions(&self) -> Result<FunctionValue<'ctx>> {
+        let i32_type = self.context.i32_type();
+        let fn_type = i32_type.fn_type(&[], false);
+        let fn_val = self.create_function("printf", fn_type)?;
+        fn_val.set_linkage(inkwell::module::Linkage::External);
         Ok(fn_val)
     }
 
@@ -73,20 +82,30 @@ impl<'ctx> EvaLLVM<'ctx> {
     /// Creates a basic block with the specified function as parent
     fn create_function_block(&self, parent: FunctionValue<'ctx>) -> Result<()> {
         let block = self.create_basic_block(parent, "entry");
-        // Set entry point for the function
         self.builder.position_at_end(block);
         Ok(())
+    }
+
+    /// Main compile loop
+    fn gen(&mut self) -> Result<BasicValueEnum<'ctx>> {
+        let val = self
+            .builder
+            .build_global_string_ptr("Hello, world!\n", "hello_world")?;
+        Ok(val.as_basic_value_enum())
     }
 
     /// Compiles program
     pub fn compile(&mut self, _program: &str) -> Result<()> {
         let i32_type = self.context.i32_type();
         let fn_type = i32_type.fn_type(&[], false);
-        let i32_val = i32_type.const_int(42, false);
+        let i32_val = i32_type.const_int(0, false);
         let fn_main = self.create_function("main", fn_type)?;
         self.function = Some(fn_main);
 
-        self.builder.build_return(Some(&i32_val)).unwrap();
+        let result = self.gen()?;
+
+        self.builder.build_return(Some(&i32_val))?;
+        // self.setup_extern_functions()?;
         Ok(())
     }
 

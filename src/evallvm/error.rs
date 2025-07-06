@@ -1,3 +1,4 @@
+use inkwell::builder::BuilderError;
 use miette::Diagnostic;
 use thiserror::Error;
 
@@ -11,6 +12,9 @@ pub enum EvaLLVMError {
 
     #[error("Failed to create function: {func_name}")]
     FunctionError { func_name: String },
+
+    #[error("Builder error: {0}")]
+    BuilderError(#[from] BuilderError),
 }
 
 pub type Result<T> = std::result::Result<T, EvaLLVMError>;
