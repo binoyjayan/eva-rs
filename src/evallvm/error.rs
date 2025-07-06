@@ -10,8 +10,8 @@ pub enum EvaLLVMError {
     #[error("Failed to write LLVM IR file '{file}': {message}")]
     IRWriteError { file: String, message: String },
 
-    #[error("Failed to create function: {func_name}")]
-    FunctionError { func_name: String },
+    #[error("{message}: {func_name}")]
+    FunctionError { message: String, func_name: String },
 
     #[error("Builder error: {0}")]
     BuilderError(#[from] BuilderError),

@@ -4,6 +4,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue};
+use inkwell::AddressSpace;
 use std::path::Path;
 
 mod error;
@@ -31,6 +32,20 @@ impl<'ctx> EvaLLVM<'ctx> {
         }
     }
 
+    pub fn init(self) -> Result<Self> {
+        self.setup_extern_functions()?;
+        Ok(self)
+    }
+
+    pub fn get_function(&self, fn_name: &str) -> Result<FunctionValue<'ctx>> {
+        self.module
+            .get_function(fn_name)
+            .ok_or_else(|| EvaLLVMError::FunctionError {
+                message: "Function not found".to_string(),
+                func_name: fn_name.to_string(),
+            })
+    }
+
     /// Creates a function prototype in the module, or return existing
     fn create_function_proto(
         &self,
@@ -44,6 +59,7 @@ impl<'ctx> EvaLLVM<'ctx> {
         };
         if !fn_val.verify(false) {
             return Err(EvaLLVMError::FunctionError {
+                message: "Function verification failed".to_string(),
                 func_name: fn_name.to_string(),
             });
         }
@@ -64,8 +80,9 @@ impl<'ctx> EvaLLVM<'ctx> {
     /// Setup external functions
     fn setup_extern_functions(&self) -> Result<FunctionValue<'ctx>> {
         let i32_type = self.context.i32_type();
-        let fn_type = i32_type.fn_type(&[], false);
-        let fn_val = self.create_function("printf", fn_type)?;
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let fn_type = i32_type.fn_type(&[ptr_type.into()], true);
+        let fn_val = self.create_function_proto("printf", fn_type)?;
         fn_val.set_linkage(inkwell::module::Linkage::External);
         Ok(fn_val)
     }
@@ -91,7 +108,12 @@ impl<'ctx> EvaLLVM<'ctx> {
         let val = self
             .builder
             .build_global_string_ptr("Hello, world!\n", "hello_world")?;
-        Ok(val.as_basic_value_enum())
+
+        let printf_fn = self.get_function("printf")?;
+        let args = vec![val.as_basic_value_enum().into()];
+        let call = self.builder.build_call(printf_fn, &args, "printf_call")?;
+
+        Ok(call.try_as_basic_value().left().unwrap())
     }
 
     /// Compiles program
@@ -102,10 +124,9 @@ impl<'ctx> EvaLLVM<'ctx> {
         let fn_main = self.create_function("main", fn_type)?;
         self.function = Some(fn_main);
 
-        let result = self.gen()?;
+        let _result = self.gen()?;
 
         self.builder.build_return(Some(&i32_val))?;
-        // self.setup_extern_functions()?;
         Ok(())
     }
 
